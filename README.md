@@ -18,7 +18,14 @@ curl -fsSL https://raw.githubusercontent.com/dmjo-creator/claude-auto-resume/mai
 irm https://raw.githubusercontent.com/dmjo-creator/claude-auto-resume/main/install.ps1 | iex
 ```
 
-명령 실행이 막힌 PC 는 **클로드코드에게 시키면 된다** — 클로드코드를 루트 폴더에서 열고:
+**VS Code 안 클로드코드 실행 중이라면** — 터미널을 열 것 없이, 클로드코드 대화창에 아래 한 줄을 붙여넣는다
+(클로드코드를 **클로드코드 폴더(루트)에서** 열었을 때. claude 가 지시문을 읽고 내려받기 → 설치 → 자동실행 등록 → 검증까지 직접 한다):
+```
+https://raw.githubusercontent.com/dmjo-creator/claude-auto-resume/main/claude-install.md 의 지시대로 이 폴더에 자동재개를 설치해줘
+```
+셸 명령 실행까지 막힌 PC 에서도 이 방법은 된다 — claude 가 파일 도구로 단계를 대신 수행한다 (지시문에 우회 절차 포함).
+
+스킬로 등록해 두고 쓰려면:
 ```
 https://github.com/dmjo-creator/claude-auto-resume 저장소의 skill/auto-resume-setup 을
 ~/.claude/skills 에 설치하고 /auto-resume-setup 을 수행해줘
@@ -29,6 +36,7 @@ https://github.com/dmjo-creator/claude-auto-resume 저장소의 skill/auto-resum
 | 경로 | 내용 |
 |---|---|
 | `install.sh` / `install.ps1` | 한 줄 설치 부트스트랩 (저장소를 받아 kit 설치기를 돌린다) |
+| `claude-install.md` | 클로드코드용 설치 지시문 — claude 가 읽고 직접 설치한다 |
 | `kit/` | 알맹이 — payload(공용 규칙·스크립트) + install/mac·win |
 | `skill/auto-resume-setup/` | 클로드코드 스킬판 — claude 가 지시문을 읽고 직접 설치 |
 
