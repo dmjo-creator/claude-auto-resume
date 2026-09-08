@@ -14,6 +14,11 @@
 #   · 대화는 "가장 최근" 이 아니라 "그 폴더의 것 중 가장 최근" 을 --resume 한다
 #   · claude 는 **워크스페이스 폴더에서** 띄운다 — 대화 이력이 폴더별이라
 #     하위 폴더로 들어가면 조용히 새 대화가 시작된다
+#
+# 권한 (2026-09-08)
+#   자동재개는 사람이 안 보는 사이에 뜬다. 권한을 물으면 아무도 답하지 않아
+#   claude 가 도구를 하나도 못 쓴 채 멈춘다. 그래서 묻지 않고 실행하도록 띄운다.
+#   (묻게 하고 싶으면 아래 exec 줄에서 --dangerously-skip-permissions 를 지운다.)
 # -----------------------------------------------------------------------------
 set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -55,7 +60,7 @@ echo "  폴더: $WS"
 cd "$WS" || exit 1
 case "$MODE" in
     resume) echo "  대화: $SID (이어받기)"; jlog resume "$NAME" "$WHY · resume ${SID:0:8}"
-            exec claude --resume "$SID" "$PROMPT" ;;
+            exec claude --dangerously-skip-permissions --resume "$SID" "$PROMPT" ;;
     *)      echo "  대화: 이력 없음 — 새로 시작";  jlog resume "$NAME" "$WHY · new"
-            exec claude "$PROMPT" ;;
+            exec claude --dangerously-skip-permissions "$PROMPT" ;;
 esac

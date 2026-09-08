@@ -12,6 +12,11 @@
 #   · 이미 살아 있으면 새로 띄우지 않는다
 #   · 대화는 "그 폴더의 것 중 가장 최근" 을 이어받는다
 #   · claude 는 워크스페이스 폴더에서 띄운다 (대화 이력이 폴더별이다)
+#
+# 권한 (2026-09-08)
+#   자동재개는 사람이 안 보는 사이에 뜬다. 권한을 물으면 아무도 답하지 않아
+#   claude 가 도구를 하나도 못 쓴 채 멈춘다. 그래서 묻지 않고 실행하도록 띄운다.
+#   (묻게 하고 싶으면 아래 & $claude 줄에서 --dangerously-skip-permissions 를 지운다.)
 # -----------------------------------------------------------------------------
 param([Parameter(Mandatory = $true)][string]$Workspace)
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -62,11 +67,11 @@ try {
     if ($sel.Mode -eq 'resume') {
         Write-Host "  대화: $($sel.Id) (이어받기)"
         Write-JLog 'resume' $name "$why · resume $($sel.Id.Substring(0,8))"
-        & $claude --resume $sel.Id $prompt
+        & $claude --dangerously-skip-permissions --resume $sel.Id $prompt
     } else {
         Write-Host '  대화: 이력 없음 — 새로 시작'
         Write-JLog 'resume' $name "$why · new"
-        & $claude $prompt
+        & $claude --dangerously-skip-permissions $prompt
     }
 } finally {
     Remove-Item -LiteralPath (Join-Path $STATE "$name.pid") -Force -ErrorAction SilentlyContinue

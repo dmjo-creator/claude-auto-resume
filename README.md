@@ -40,4 +40,14 @@ https://github.com/dmjo-creator/claude-auto-resume 저장소의 skill/auto-resum
 | `kit/` | 알맹이 — payload(공용 규칙·스크립트) + install/mac·win |
 | `skill/auto-resume-setup/` | 클로드코드 스킬판 — claude 가 지시문을 읽고 직접 설치 |
 
+## 권한과 안전
+
+되살아난 claude 는 **권한을 묻지 않고** 뜬다 (`--dangerously-skip-permissions`). 자동재개는 사람이
+안 보는 사이에 뜨는 것이라, 권한을 물으면 아무도 답하지 못해 claude 가 도구를 하나도 못 쓴 채
+그 자리에서 멈춰 버리기 때문이다. 대신 각 폴더에 주는 첫 지시(`재시작설정/프롬프트/`)가
+**읽고 점검해서 보고**로 끝나, 사람이 없는 사이에 파일을 고치거나 발행·전송하지 않게 한다.
+
+묻게 하고 싶으면 설치 후 그 플래그를 지운다 — 맥은 `재시작설정/resume_claude.sh` 의 `exec claude …` 줄,
+윈도우는 `재시작설정/win/resume-claude.ps1` 의 `& $claude …` 줄.
+
 끄기: `<루트>/재시작설정/상태/.전체끔` 파일 생성 · 제거: `kit/install/mac/제거.sh` 또는 `kit\install\win\uninstall.ps1`
