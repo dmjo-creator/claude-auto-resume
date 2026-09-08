@@ -10,17 +10,17 @@ claude 가 직전 대화를 자동으로 이어받게 하는 장치다. 규칙�
 
 맥 (터미널):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/__OWNER__/claude-auto-resume/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dmjo-creator/claude-auto-resume/main/install.sh | bash
 ```
 
 윈도우 (PowerShell):
 ```powershell
-irm https://raw.githubusercontent.com/__OWNER__/claude-auto-resume/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/dmjo-creator/claude-auto-resume/main/install.ps1 | iex
 ```
 
 명령 실행이 막힌 PC 는 **클로드코드에게 시키면 된다** — 클로드코드를 루트 폴더에서 열고:
 ```
-https://github.com/__OWNER__/claude-auto-resume 저장소의 skill/auto-resume-setup 을
+https://github.com/dmjo-creator/claude-auto-resume 저장소의 skill/auto-resume-setup 을
 ~/.claude/skills 에 설치하고 /auto-resume-setup 을 수행해줘
 ```
 
