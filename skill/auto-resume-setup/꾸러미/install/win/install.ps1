@@ -53,7 +53,10 @@ if (-not $Root) {
         Write-Host '워크스페이스들이 들어 있는(또는 앞으로 들어갈) 폴더를 정한다.'
         $ans = Read-Host "  그냥 엔터를 누르면: $defaultRoot"
         $Root = if ($ans) { $ans } else { $defaultRoot }
-    } else { $Root = $defaultRoot }
+    } else {
+        # ★ 비대화형(자동화)인데 -Root 지정이 없으면 멈춘다. 조용히 기본 경로에 설치하지 않는다 (2026-09-08 사고).
+        Write-Host '[!] 설치 대상이 지정되지 않았다. 비대화형 실행은 -Root <폴더> 를 명시해야 한다.'; exit 1
+    }
 }
 $Root = [Environment]::ExpandEnvironmentVariables($Root)
 if (-not (Test-Path -LiteralPath $Root)) { New-Item -ItemType Directory -Path $Root -Force | Out-Null }

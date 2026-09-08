@@ -50,11 +50,21 @@ elif [ -t 0 ]; then
     printf '  그냥 엔터를 누르면: %s\n  > ' "$DEFAULT_ROOT"
     read -r ROOT
     [ -n "$ROOT" ] || ROOT="$DEFAULT_ROOT"
-else ROOT="$DEFAULT_ROOT"; fi
+else
+    # ★ 비대화형(파이프·자동화)인데 루트 지정이 없으면 멈춘다.
+    #   조용히 기본 경로에 설치했다가 진짜 클로드코드 폴더를 덮은 사고가 있었다 (2026-09-08).
+    echo "[!] 설치 대상 폴더가 지정되지 않았다. 비대화형 실행은 경로를 명시해야 한다:"
+    echo "    bash 설치.sh /경로/클로드코드폴더"; exit 1
+fi
 ROOT="${ROOT/#\~/$HOME}"
 ROOT="$(python3 -c 'import sys,unicodedata,os; sys.stdout.write(unicodedata.normalize("NFC", os.path.abspath(os.path.expanduser(sys.argv[1]))))' "$ROOT")"
 mkdir -p "$ROOT" || { echo "[!] 폴더를 만들지 못했다: $ROOT"; exit 1; }
 CFG="$ROOT/재시작설정"
+# ★ 원본(개발용) 재시작설정 보호 — 설정.sh 는 배포판에 없는 원본 전용 파일이다.
+if [ -f "$CFG/설정.sh" ] && [ "${FORCE_OVERWRITE:-0}" != "1" ]; then
+    echo "[!] $CFG 는 배포판이 아니라 **원본** 재시작설정이다 (설정.sh 존재). 덮지 않고 멈춘다."
+    echo "    정말 덮으려면: FORCE_OVERWRITE=1 bash 설치.sh <루트>"; exit 1
+fi
 echo
 say "  루트      : $ROOT"
 say "  설치 위치 : $CFG"
