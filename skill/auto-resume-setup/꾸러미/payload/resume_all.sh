@@ -51,7 +51,11 @@ while IFS= read -r ws; do
     n="$(ws_name "$ws")"
     [ -z "$ONLY" ] || [ "$n" = "$ONLY" ] || continue
     for l in $(services_for "$n"); do
-        launchctl kickstart "gui/$UID_N/$l" >/dev/null 2>&1 && echo "  깨움: $l"
+        r="$(wake_service "$l")"
+        case "$r" in
+            gui|system) echo "  깨움($r): $l" ;;
+            fail:*)     echo "  [!] 못 깨움: $l — ${r#fail:}"; jlog svcfail "$n" "$l: ${r#fail:}" ;;
+        esac
     done
     if [ -f "$STATE/.전체끔" ] || [ -f "$STATE/$n.끔" ]; then echo "  $n: 꺼 둠"; continue; fi
     if claude_alive "$ws"; then echo "  $n: claude 살아 있음 (pid $CLAUDE_PID) — 그대로 둔다"; continue; fi
@@ -75,6 +79,19 @@ if [ -d "$VSCODE" ]; then
         for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done
         [ "$all" = 1 ] && break
     done
+    # 아직 안 뜬 폴더 = 창이 이미 열려 있어 folderOpen 미발동 → Reload 로 재실행 (편집기자동리로드=1)
+    if [ "${VSCODE_AUTO_RELOAD:-0}" = 1 ]; then
+        for ws in "${TARGETS[@]}"; do
+            claude_alive "$ws" && continue
+            n="$(ws_name "$ws")"; echo "  $n: 창은 열려 있는데 claude 가 없다 — 편집기 창을 Reload 한다"
+            jlog reload "$n" "folderOpen 재실행 유도"; vscode_reload "$ws"
+        done
+        for _ in $(seq 1 $((FOLDEROPEN_WAIT/3))); do
+            sleep 2; all=1
+            for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done
+            [ "$all" = 1 ] && break
+        done
+    fi
 else
     echo "  [!] VS Code 를 못 찾았다 — 터미널로 띄운다"
 fi

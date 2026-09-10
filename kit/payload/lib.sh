@@ -15,7 +15,7 @@ export PATH LANG="${LANG:-ko_KR.UTF-8}"
 # ── 설정 읽기 ────────────────────────────────────────────────────────────────
 #   bash 는 한글 **변수명**을 못 쓴다. 그래서 한글 이름을 영문 변수로 옮겨 담는다.
 BASE=""; EXCLUDE="data"; CONTAINERS="_bundle"; EXTRA_WORKSPACES=""
-NET_WAIT=300; OPEN_STAGGER=4; FOLDEROPEN_WAIT=30; RESUME_GAP=120
+NET_WAIT=300; OPEN_STAGGER=4; FOLDEROPEN_WAIT=45; RESUME_GAP=120; VSCODE_AUTO_RELOAD=0
 NET_DOWN_MIN=30; NET_POLL=20; MIN_SESSION_BYTES=20000
 load_config() {
     local f="$CFG/설정.txt" line k v
@@ -36,6 +36,7 @@ load_config() {
             회선대기)         NET_WAIT="$v" ;;
             창간격)          OPEN_STAGGER="$v" ;;
             발판대기)         FOLDEROPEN_WAIT="$v" ;;
+            편집기자동리로드)   VSCODE_AUTO_RELOAD="$v" ;;
             재개간격)         RESUME_GAP="$v" ;;
             끊김최소)         NET_DOWN_MIN="$v" ;;
             확인간격)         NET_POLL="$v" ;;
@@ -157,6 +158,39 @@ claude_alive() {
         fi
     done
     rm -f "$STATE/$name.pid"; return 1
+}
+
+# launchd 서비스 하나를 깨운다 → "gui" | "system" | "fail:<사유>"
+#   kickstart 는 로드된 서비스만 재시작한다. gui 에 없으면 system(시스템 데몬)도 시도한다.
+#   폴더 이름이 바뀌면 그 서비스 plist 경로가 깨져 죽어 있을 수 있어(last exit!=0) 사유를 남긴다.
+wake_service() {
+    local l="$1" u dom info st ec; u="$(id -u)"
+    if   launchctl print "gui/$u/$l" >/dev/null 2>&1; then dom="gui/$u"
+    elif launchctl print "system/$l" >/dev/null 2>&1; then dom="system"
+    else echo "fail:로드 안 됨 (해당 폴더의 설치로 등록 필요)"; return; fi
+    launchctl kickstart "$dom/$l" >/dev/null 2>&1
+    info="$(launchctl print "$dom/$l" 2>/dev/null)"
+    st="$(printf '%s' "$info" | awk -F'= ' '/state = /{print $2; exit}')"
+    ec="$(printf '%s' "$info" | awk -F'= ' '/last exit code/{print $2; exit}')"
+    case "$st" in *running*) echo "${dom%%/*}"; return ;; esac
+    case "$ec" in ''|0|*never*) echo "${dom%%/*}" ;; *) echo "fail:죽어 있음 last exit=$ec (plist 경로·설정 확인: $l)" ;; esac
+}
+
+# VS Code 창이 이미 열려 있어 folderOpen 이 재실행되지 않을 때, 그 창을 Reload 해 다시 돌린다.
+#   접근성 권한이 없으면 조용히 실패하고 호출부는 터미널 대비책으로 떨어진다.
+vscode_reload() {
+    open -a "Visual Studio Code" "$1" 2>/dev/null; sleep 2
+    osascript >/dev/null 2>&1 <<'OSA'
+tell application "Visual Studio Code" to activate
+delay 0.7
+tell application "System Events"
+    keystroke "p" using {command down, shift down}
+    delay 0.5
+    keystroke ">Reload Window"
+    delay 0.5
+    key code 36
+end tell
+OSA
 }
 
 online() { curl -s -m 5 -o /dev/null https://www.google.com/generate_204 || ping -c1 -W3 8.8.8.8 >/dev/null 2>&1; }
