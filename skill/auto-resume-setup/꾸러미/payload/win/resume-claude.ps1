@@ -34,9 +34,14 @@ if ((Test-Path -LiteralPath (Join-Path $STATE '.전체끔')) -or (Test-Path -Lit
     Write-JLog 'off' $name '꺼 둠'; exit 0
 }
 
-if (Test-ClaudeAlive $ws) {
+$rc = Get-ClaudeState $ws
+if ($rc -eq 0) {
     Write-Host "(claude 가 이미 떠 있다 — pid $CLAUDE_PID. 새로 띄우지 않는다)"
     Write-JLog 'skipped' $name "이미 실행 중 pid $CLAUDE_PID"; exit 0
+}
+if ($rc -eq 2) {
+    Write-Host '[!] 프로세스 목록을 볼 수 없어 claude 가 이미 떠 있는지 모른다 — 겹쳐 띄우지 않게 멈춘다'
+    Write-JLog 'skipped' $name '생사 판정 불가'; exit 0
 }
 
 $why = '폴더를 열었다'

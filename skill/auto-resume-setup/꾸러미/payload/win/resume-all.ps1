@@ -37,18 +37,24 @@ if (-not $NoWait) {
 }
 
 $targets = New-Object System.Collections.Generic.List[string]
+Save-AliveSnapshot   # 모든 폴더 판정을 사진 한 장으로
 foreach ($ws in (Get-Workspaces)) {
     $name = Get-WsName $ws
     if ($Only -and $name -ne $Only) { continue }
     foreach ($t in (Get-ServicesFor $name)) {
-        try { Start-ScheduledTask -TaskName $t -ErrorAction Stop; Write-Host "  깨움: $t" } catch {}
+        $r = Invoke-WakeTask $t
+        if ($r -eq 'ok') { Write-Host "  깨움: $t" }
+        else { Write-Host "  [!] 못 깨움: $t — $($r.Substring(5))"; Write-JLog 'svcfail' $name "${t}: $($r.Substring(5))" }
     }
     if ((Test-Path -LiteralPath (Join-Path $STATE '.전체끔')) -or (Test-Path -LiteralPath (Join-Path $STATE "$name.끔"))) {
         Write-Host "  $name : 꺼 둠"; continue
     }
-    if (Test-ClaudeAlive $ws) { Write-Host "  $name : claude 살아 있음 (pid $CLAUDE_PID) — 그대로 둔다"; continue }
+    $rc = Get-ClaudeState $ws
+    if ($rc -eq 0) { Write-Host "  $name : claude 살아 있음 (pid $CLAUDE_PID) — 그대로 둔다"; continue }
+    if ($rc -eq 2) { Write-Host "  [!] $name : 프로세스 목록을 못 봐 생사 판정 불가 — 겹쳐 띄우지 않게 건너뛴다"; Write-JLog 'skipped' $name '생사 판정 불가'; continue }
     $targets.Add($ws)
 }
+Clear-AliveSnapshot
 
 if ($targets.Count -eq 0) { Write-Host '  되살릴 것이 없다'; Write-JLog 'done' 'all' 'nothing'; exit 0 }
 
@@ -65,13 +71,16 @@ if ($code) {
     for ($i = 0; $i -lt [int]($FOLDEROPEN_WAIT / 2); $i++) {
         Start-Sleep -Seconds 2
         $all = $true
+        Save-AliveSnapshot
         foreach ($ws in $targets) { if (-not (Test-ClaudeAlive $ws)) { $all = $false } }
+        Clear-AliveSnapshot
         if ($all) { break }
     }
 } else {
     Write-Host '  [!] VS Code 를 못 찾았다 — 새 창으로 띄운다'
 }
 
+Save-AliveSnapshot   # 마지막 판정도 한 장으로 (새 창으로 띄우는 것은 다른 폴더 판정에 영향이 없다)
 foreach ($ws in $targets) {
     $name = Get-WsName $ws
     if (Test-ClaudeAlive $ws) { Write-Host "  $name : 편집기 안에서 떴다 (pid $CLAUDE_PID)"; Write-JLog 'done' $name 'vscode'; continue }
@@ -82,4 +91,5 @@ foreach ($ws in $targets) {
         '-File', ('"' + (Join-Path $PSScriptRoot 'resume-claude.ps1') + '"'), ('"' + $ws + '"')) | Out-Null
     Start-Sleep -Seconds 2
 }
+Clear-AliveSnapshot
 Write-Host '===== 끝 ====='

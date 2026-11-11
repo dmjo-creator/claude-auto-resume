@@ -126,13 +126,43 @@ function Select-Session {
     return @{ Mode = 'new' }
 }
 
-# 그 워크스페이스의 claude 가 살아 있나
+# 그 워크스페이스의 claude 가 살아 있나 → 0 살아 있음 · 1 없음 · 2 판정 불가
 #   ① 상태\<폴더>.pid 의 프로세스가 아직 있나 (우리가 띄운 것 — 그 셸이 claude 를 앞에 두고 있다)
 #   ② 아니면 명령줄에 그 폴더의 대화ID 가 들어 있는 claude 프로세스가 있나
 #   윈도우는 남의 프로세스 작업폴더를 곧바로 볼 수 없다. 그래서 이 두 가지로 판정한다.
+#   ②에서 프로세스 목록을 못 읽으면 2 — "없다"고 단정해 겹쳐 띄우지 않게 한다.
+#   $ALIVE_READONLY = $true 이면 pid 파일을 쓰거나 지우지 않는다 (보기만 한다).
+#
+# 여러 폴더를 연달아 볼 때는 Save-AliveSnapshot 으로 프로세스 목록을 한 번만 읽어 두고
+# 다 보면 Clear-AliveSnapshot 한다. 고른 대화는 이 실행이 끝날 때까지 기억한다
+# (대기 중 2초마다 대화 파일을 다시 뒤지지 않게).
 $script:CLAUDE_PID = 0
-function Test-ClaudeAlive {
+$script:ALIVE_READONLY = $false
+$script:ALIVE_SNAP = $null      # $null = 그때그때 읽기 · '?' = 못 읽음 · 그 밖 = 찍어 둔 목록
+$script:SEL_CACHE = @{}
+
+# claude 프로세스 목록 (Id, Cmd). 못 읽으면 $null
+function Get-ClaudeProcs {
+    try {
+        $procs = Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='claude.exe'" -ErrorAction Stop
+    } catch { return $null }
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($pr in $procs) {
+        if ($pr.CommandLine -and $pr.CommandLine -match 'claude') {
+            $list.Add([pscustomobject]@{ Id = $pr.ProcessId; Cmd = [string]$pr.CommandLine })
+        }
+    }
+    return ,$list     # 빈 목록도 $null 로 풀리지 않게
+}
+function Save-AliveSnapshot {
+    $c = Get-ClaudeProcs
+    if ($null -eq $c) { $script:ALIVE_SNAP = '?' } else { $script:ALIVE_SNAP = $c }
+}
+function Clear-AliveSnapshot { $script:ALIVE_SNAP = $null }
+
+function Get-ClaudeState {
     param([string]$Ws)
+    $script:CLAUDE_PID = 0
     $name = Get-WsName $Ws
     $pidFile = Join-Path $STATE "$name.pid"
     if (Test-Path -LiteralPath $pidFile) {
@@ -140,24 +170,26 @@ function Test-ClaudeAlive {
         $pidNum = 0
         if ([int]::TryParse(($pidText -as [string]), [ref]$pidNum) -and $pidNum -gt 0) {
             $p = Get-Process -Id $pidNum -ErrorAction SilentlyContinue
-            if ($p) { $script:CLAUDE_PID = $pidNum; return $true }
+            if ($p) { $script:CLAUDE_PID = $pidNum; return 0 }
         }
-        Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
+        if (-not $script:ALIVE_READONLY) { Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue }
     }
-    $sel = Select-Session $Ws
-    if ($sel.Mode -eq 'resume') {
-        try {
-            $procs = Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='claude.exe'" -ErrorAction Stop
-            foreach ($pr in $procs) {
-                if ($pr.CommandLine -and $pr.CommandLine -match 'claude' -and $pr.CommandLine -match [regex]::Escape($sel.Id)) {
-                    Set-Content -LiteralPath $pidFile -Value $pr.ProcessId -Encoding ASCII
-                    $script:CLAUDE_PID = $pr.ProcessId; return $true
-                }
-            }
-        } catch {}
+    if (-not $script:SEL_CACHE.ContainsKey($Ws)) { $script:SEL_CACHE[$Ws] = Select-Session $Ws }
+    $sel = $script:SEL_CACHE[$Ws]
+    if ($sel.Mode -ne 'resume') { return 1 }     # 대화ID 가 없으면 명령줄로 찾을 길이 없다
+    if ($null -eq $script:ALIVE_SNAP) { $procs = Get-ClaudeProcs; if ($null -eq $procs) { return 2 } }
+    elseif ($script:ALIVE_SNAP -is [string]) { return 2 }
+    else { $procs = $script:ALIVE_SNAP }
+    $idRe = [regex]::Escape($sel.Id)
+    foreach ($pr in $procs) {
+        if ($pr.Cmd -match $idRe) {
+            if (-not $script:ALIVE_READONLY) { Set-Content -LiteralPath $pidFile -Value $pr.Id -Encoding ASCII }
+            $script:CLAUDE_PID = $pr.Id; return 0
+        }
     }
-    return $false
+    return 1
 }
+function Test-ClaudeAlive { param([string]$Ws) return ((Get-ClaudeState $Ws) -eq 0) }
 
 function Test-Online {
     try {
@@ -185,6 +217,32 @@ function Get-ServicesFor {
         if ($p[0] -eq $Name) { return @($p[1..($p.Count - 1)]) }
     }
     return @()
+}
+
+# 작업 스케줄러 작업 상태 → @{ State = 'ok'|'dead'|'missing'; Note = '...' }  (맥 svc_status 와 같은 구실)
+function Get-TaskStatus {
+    param([string]$Name)
+    try { $t = Get-ScheduledTask -TaskName $Name -ErrorAction Stop } catch { return @{ State = 'missing'; Note = '등록 안 됨' } }
+    if ("$($t.State)" -eq 'Running')  { return @{ State = 'ok';   Note = '실행 중' } }
+    if ("$($t.State)" -eq 'Disabled') { return @{ State = 'dead'; Note = '사용 안 함(Disabled)' } }
+    $r = $null
+    try { $r = [int64](Get-ScheduledTaskInfo -TaskName $Name -ErrorAction Stop).LastTaskResult } catch {}
+    # 0 성공 · 0x41300 준비됨 · 0x41301 실행 중 · 0x41303 아직 안 돌았음 — 모두 정상으로 본다
+    if ($null -eq $r -or @(0, 0x41300, 0x41301, 0x41303) -contains $r) { return @{ State = 'ok'; Note = '대기 (정상)' } }
+    return @{ State = 'dead'; Note = ('마지막 결과=0x{0:X}' -f $r) }
+}
+
+# 작업을 깨우고 결과를 돌려준다 → 'ok' 또는 'fail:이유'  (맥 wake_service 와 같은 구실)
+function Invoke-WakeTask {
+    param([string]$Name)
+    $s = Get-TaskStatus $Name
+    if ($s.State -eq 'missing') { return 'fail:등록 안 됨 (해당 폴더의 설치 스크립트로 등록 필요)' }
+    if ($s.Note -ne '실행 중') {
+        try { Start-ScheduledTask -TaskName $Name -ErrorAction Stop } catch { return "fail:시작 실패 — $($_.Exception.Message)" }
+    }
+    $s = Get-TaskStatus $Name
+    if ($s.State -eq 'ok') { return 'ok' }
+    return "fail:죽어 있음 $($s.Note) (작업 설정 확인: $Name)"
 }
 
 # 지금 돌고 있는 PowerShell 실행 파일 — 새 창을 띄울 때 쓴다
