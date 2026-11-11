@@ -46,6 +46,7 @@ fi
 
 UID_N="$(id -u)"
 TARGETS=()
+alive_snapshot   # 모든 폴더 판정을 사진 한 장으로
 while IFS= read -r ws; do
     [ -n "$ws" ] || continue
     n="$(ws_name "$ws")"
@@ -58,9 +59,12 @@ while IFS= read -r ws; do
         esac
     done
     if [ -f "$STATE/.전체끔" ] || [ -f "$STATE/$n.끔" ]; then echo "  $n: 꺼 둠"; continue; fi
-    if claude_alive "$ws"; then echo "  $n: claude 살아 있음 (pid $CLAUDE_PID) — 그대로 둔다"; continue; fi
+    claude_alive "$ws"; rc=$?
+    if [ "$rc" = 0 ]; then echo "  $n: claude 살아 있음 (pid $CLAUDE_PID) — 그대로 둔다"; continue; fi
+    if [ "$rc" = 2 ]; then echo "  [!] $n: 프로세스 목록을 못 봐 생사 판정 불가 — 겹쳐 띄우지 않게 건너뛴다"; jlog skipped "$n" "생사 판정 불가"; continue; fi
     TARGETS+=("$ws")
 done < <(list_workspaces)
+alive_forget
 
 [ "${#TARGETS[@]}" -gt 0 ] || { echo "  되살릴 것이 없다"; jlog done all "nothing"; exit 0; }
 
@@ -76,7 +80,7 @@ if [ -d "$VSCODE" ]; then
     echo "  자동 작업을 ${FOLDEROPEN_WAIT}초 기다린다"
     for _ in $(seq 1 $((FOLDEROPEN_WAIT/2))); do
         sleep 2; all=1
-        for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done
+        alive_snapshot; for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done; alive_forget
         [ "$all" = 1 ] && break
     done
     # 아직 안 뜬 폴더 = 창이 이미 열려 있어 folderOpen 미발동 → Reload 로 재실행 (편집기자동리로드=1)
@@ -88,7 +92,7 @@ if [ -d "$VSCODE" ]; then
         done
         for _ in $(seq 1 $((FOLDEROPEN_WAIT/3))); do
             sleep 2; all=1
-            for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done
+            alive_snapshot; for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done; alive_forget
             [ "$all" = 1 ] && break
         done
     fi
@@ -96,6 +100,7 @@ else
     echo "  [!] VS Code 를 못 찾았다 — 터미널로 띄운다"
 fi
 
+alive_snapshot   # 마지막 판정도 한 장으로
 for ws in "${TARGETS[@]}"; do
     n="$(ws_name "$ws")"
     if claude_alive "$ws"; then echo "  $n: 편집기 안에서 떴다 (pid $CLAUDE_PID)"; jlog done "$n" "vscode"; continue; fi
@@ -104,4 +109,5 @@ for ws in "${TARGETS[@]}"; do
     osascript -e "tell application \"Terminal\" to do script \"bash '$CFG/resume_claude.sh' '$ws'\"" >/dev/null 2>&1
     sleep 2
 done
+alive_forget
 echo "===== 끝 ====="

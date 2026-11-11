@@ -35,9 +35,14 @@ if [ -f "$STATE/.전체끔" ] || [ -f "$STATE/$NAME.끔" ]; then
     jlog off "$NAME" "꺼 둠"; exit 0
 fi
 
-if claude_alive "$WS"; then
+claude_alive "$WS"; rc=$?
+if [ "$rc" = 0 ]; then
     echo "(claude 가 이미 떠 있다 — pid $CLAUDE_PID. 새로 띄우지 않는다)"
     jlog skipped "$NAME" "이미 실행 중 pid $CLAUDE_PID"; exit 0
+fi
+if [ "$rc" = 2 ]; then
+    echo "[!] 프로세스 목록을 볼 수 없어 claude 가 이미 떠 있는지 모른다 — 겹치지 않게 띄우지 않는다. 직접: claude --continue"
+    jlog skipped "$NAME" "생사 판정 불가"; exit 0
 fi
 
 if [ -f "$MARK" ]; then WHY="$(cat "$MARK")"; rm -f "$MARK"; else WHY="폴더를 열었다"; fi
