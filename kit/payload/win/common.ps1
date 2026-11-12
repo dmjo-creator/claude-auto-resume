@@ -44,6 +44,8 @@ function Read-Config {
 if (-not (Read-Config)) { exit 1 }
 
 function Now-Str { (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') }
+# 단계 표시 — 재개 기록에 시각을 찍어 어디서 기다렸는지 보이게 한다
+function Write-Step { param([string]$Text) Write-Host ("  [{0}] ── {1}" -f (Get-Date).ToString('HH:mm:ss'), $Text) }
 
 # 기록 — 상태\재시작로그.jsonl
 function Write-JLog {

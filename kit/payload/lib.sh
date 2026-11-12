@@ -49,6 +49,8 @@ load_config() {
 load_config || exit 1
 
 now() { date '+%Y-%m-%d %H:%M:%S'; }
+# 단계 표시 — 재개 기록에 시각을 찍어 어디서 기다렸는지 보이게 한다
+step() { echo "  [$(date '+%H:%M:%S')] ── $*"; }
 
 # 기록 — 상태/재시작로그.jsonl   (event, ws, note)
 jlog() {
@@ -61,6 +63,9 @@ jlog() {
 #   같은 폴더인데도 글자가 달라지고, 그러면 대화 폴더 이름이 어긋나 이어받기가 조용히
 #   "새 대화" 로 떨어진다. cd+pwd 로는 정규화되지 않는다 — 셸은 준 글자를 그대로 돌려준다.
 norm_path() {
+    # 맥에 들어 있는 iconv(UTF-8-MAC→UTF-8)가 python 을 띄우는 것보다 훨씬 빠르다. 실패하면 python 으로.
+    local o
+    if o="$(printf '%s' "$1" | /usr/bin/iconv -f UTF-8-MAC -t UTF-8 2>/dev/null)"; then printf '%s\n' "$o"; return; fi
     python3 -c 'import sys,unicodedata; sys.stdout.write(unicodedata.normalize("NFC", sys.argv[1]))' "$1" 2>/dev/null \
         || printf '%s' "$1"
     echo
@@ -230,19 +235,28 @@ wake_service() {
 
 # VS Code 창이 이미 열려 있어 folderOpen 이 재실행되지 않을 때, 그 창을 Reload 해 다시 돌린다.
 #   접근성 권한이 없으면 조용히 실패하고 호출부는 터미널 대비책으로 떨어진다.
+#   키를 누르기 직전에 맨 앞 앱이 VS Code 인지 확인한다. 다른 앱이 앞에 있으면
+#   그 앱에 글자가 입력될 수 있으니 누르지 않고 1 을 돌려준다.
 vscode_reload() {
+    local r
     open -a "Visual Studio Code" "$1" 2>/dev/null; sleep 2
-    osascript >/dev/null 2>&1 <<'OSA'
+    r="$(osascript 2>/dev/null <<'OSA'
 tell application "Visual Studio Code" to activate
 delay 0.7
 tell application "System Events"
+    set frontApp to name of first application process whose frontmost is true
+    if frontApp is not "Code" and frontApp is not "Electron" then return "notfront:" & frontApp
     keystroke "p" using {command down, shift down}
     delay 0.5
     keystroke ">Reload Window"
     delay 0.5
     key code 36
 end tell
+return "ok"
 OSA
+)"
+    [ "$r" = ok ] && return 0
+    VSCODE_RELOAD_WHY="${r:-osascript 실패(접근성 권한?)}"; return 1
 }
 
 online() { curl -s -m 5 -o /dev/null https://www.google.com/generate_204 || ping -c1 -W3 8.8.8.8 >/dev/null 2>&1; }

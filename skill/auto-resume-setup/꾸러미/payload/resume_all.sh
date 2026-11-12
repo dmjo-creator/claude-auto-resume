@@ -37,15 +37,18 @@ if [ -z "$ONLY" ] && [ $(( $(date +%s) - LAST )) -lt "$RESUME_GAP" ]; then
 fi
 date +%s > "$LASTF"
 
+step "발판 심기 (sync)"
 bash "$CFG/sync.sh" --quiet
 
 if [ "$WAIT" = 1 ]; then
+    step "회선 확인"
     if wait_online "$NET_WAIT"; then echo "  회선 정상"
     else echo "  [!] ${NET_WAIT}초 안에 회선이 안 돌아왔다 — 그래도 진행한다"; jlog net all "대기 실패"; fi
 fi
 
 UID_N="$(id -u)"
 TARGETS=()
+step "서비스 깨우기 · 생사 판정"
 alive_snapshot   # 모든 폴더 판정을 사진 한 장으로
 while IFS= read -r ws; do
     [ -n "$ws" ] || continue
@@ -70,6 +73,7 @@ alive_forget
 
 VSCODE="/Applications/Visual Studio Code.app"
 if [ -d "$VSCODE" ]; then
+    step "편집기로 창 열기 (${#TARGETS[@]}곳)"
     for ws in "${TARGETS[@]}"; do
         n="$(ws_name "$ws")"
         printf '%s · %s' "$(now)" "$WHY" > "$STATE/$n.표식"
@@ -77,7 +81,7 @@ if [ -d "$VSCODE" ]; then
         open -a "$VSCODE" "$ws"
         sleep "$OPEN_STAGGER"
     done
-    echo "  자동 작업을 ${FOLDEROPEN_WAIT}초 기다린다"
+    step "자동 작업을 ${FOLDEROPEN_WAIT}초 기다린다"
     for _ in $(seq 1 $((FOLDEROPEN_WAIT/2))); do
         sleep 2; all=1
         alive_snapshot; for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done; alive_forget
@@ -88,7 +92,8 @@ if [ -d "$VSCODE" ]; then
         for ws in "${TARGETS[@]}"; do
             claude_alive "$ws" && continue
             n="$(ws_name "$ws")"; echo "  $n: 창은 열려 있는데 claude 가 없다 — 편집기 창을 Reload 한다"
-            jlog reload "$n" "folderOpen 재실행 유도"; vscode_reload "$ws"
+            jlog reload "$n" "folderOpen 재실행 유도"
+            vscode_reload "$ws" || { echo "  [!] $n: 키 입력을 멈췄다 (${VSCODE_RELOAD_WHY}) — 끝에 터미널로 띄운다"; jlog reloadskip "$n" "$VSCODE_RELOAD_WHY"; }
         done
         for _ in $(seq 1 $((FOLDEROPEN_WAIT/3))); do
             sleep 2; all=1
@@ -100,6 +105,7 @@ else
     echo "  [!] VS Code 를 못 찾았다 — 터미널로 띄운다"
 fi
 
+step "마지막 판정"
 alive_snapshot   # 마지막 판정도 한 장으로
 for ws in "${TARGETS[@]}"; do
     n="$(ws_name "$ws")"

@@ -29,14 +29,17 @@ if (-not $Only -and ($nowSec - $last) -lt $RESUME_GAP) {
 }
 Set-Content -LiteralPath $lastFile -Value $nowSec -Encoding ASCII
 
+Write-Step '발판 심기 (sync)'
 & (Join-Path $PSScriptRoot 'sync.ps1') -Quiet
 
 if (-not $NoWait) {
+    Write-Step '회선 확인'
     if (Wait-Online $NET_WAIT) { Write-Host '  회선 정상' }
     else { Write-Host "  [!] $NET_WAIT 초 안에 회선이 안 돌아왔다 — 그래도 진행한다"; Write-JLog 'net' 'all' '대기 실패' }
 }
 
 $targets = New-Object System.Collections.Generic.List[string]
+Write-Step '작업 깨우기 · 생사 판정'
 Save-AliveSnapshot   # 모든 폴더 판정을 사진 한 장으로
 foreach ($ws in (Get-Workspaces)) {
     $name = Get-WsName $ws
@@ -60,6 +63,7 @@ if ($targets.Count -eq 0) { Write-Host '  되살릴 것이 없다'; Write-JLog '
 
 $code = Get-VSCodePath
 if ($code) {
+    Write-Step "편집기로 창 열기 ($($targets.Count)곳)"
     foreach ($ws in $targets) {
         $name = Get-WsName $ws
         Set-Content -LiteralPath (Join-Path $STATE "$name.표식") -Value ("$(Now-Str) · $Why") -Encoding UTF8
@@ -67,7 +71,7 @@ if ($code) {
         Start-Process -FilePath $code -ArgumentList @($ws) | Out-Null
         Start-Sleep -Seconds $OPEN_STAGGER
     }
-    Write-Host "  자동 작업을 $FOLDEROPEN_WAIT 초 기다린다"
+    Write-Step "자동 작업을 $FOLDEROPEN_WAIT 초 기다린다"
     for ($i = 0; $i -lt [int]($FOLDEROPEN_WAIT / 2); $i++) {
         Start-Sleep -Seconds 2
         $all = $true
@@ -80,6 +84,7 @@ if ($code) {
     Write-Host '  [!] VS Code 를 못 찾았다 — 새 창으로 띄운다'
 }
 
+Write-Step '마지막 판정'
 Save-AliveSnapshot   # 마지막 판정도 한 장으로 (새 창으로 띄우는 것은 다른 폴더 판정에 영향이 없다)
 foreach ($ws in $targets) {
     $name = Get-WsName $ws
