@@ -101,6 +101,8 @@ open(dst,"w",encoding="utf-8").write("\n".join(out))' "$B_BEGIN" "$B_END" "$f" "
 }
 
 say "===== $(now) 동기화 ====="
+# 워크스페이스 목록은 한 번만 만든다 (아래 세 곳이 각각 다시 훑지 않게)
+WS_LIST="$(list_workspaces)"
 FOUND=0
 while IFS= read -r ws; do
     [ -n "$ws" ] || continue
@@ -124,16 +126,30 @@ while IFS= read -r ws; do
            \( -name 'resume_workspace.sh' -o -name 'resume_claude.sh' -o -name 'run_claude_resume.sh' \
               -o -name '.자동재개' -o -name '.자동재개_시작됨' -o -name '자동재개로그.jsonl' -o -name '재개로그.jsonl' \) -print 2>/dev/null)"
     [ -z "$old" ] || { warn "$n 에 옛 재개 흔적이 있다 — 규칙 위반. 확인할 것:"; echo "$old" | sed 's/^/        /'; jlog warn "$n" "옛 흔적"; }
-done < <(list_workspaces)
+done <<<"$WS_LIST"
 
 [ "$FOUND" -gt 0 ] || warn "워크스페이스를 하나도 못 찾았다 — 설정.txt 의 '루트' 가 맞는지 본다 ($BASE)"
 
 # 대화 폴더가 겹치는 폴더 쌍 — 글자 수가 같으면 ~/.claude/projects 의 한 폴더를 나눠 쓴다
 #   ★ 2026-09-01 — 개수는 반드시 따로 센다. 이름을 공백으로 이어붙여 split 으로 세면
 #     `1. CRM플랫폼` 처럼 이름에 공백이 있을 때 겹치지도 않은 폴더를 겹쳤다고 헛경고한다.
-list_workspaces | while IFS= read -r ws; do [ -n "$ws" ] && echo "$(proj_dir "$ws")|$(ws_name "$ws")"; done \
+printf '%s\n' "$WS_LIST" | while IFS= read -r ws; do [ -n "$ws" ] && echo "$(proj_dir "$ws")|$(ws_name "$ws")"; done \
   | sort | awk -F'|' '{a[$1]=(k[$1]++ ? a[$1]" · " : "")$2} END{for(x in a) if(k[x]>1)
       print "  [!] 대화 폴더를 공유한다: " a[x] "  → 대화는 cwd 로 갈라내지만, 필요하면 상태/고정세션.txt 로 못박을 것"}'
+
+# 서비스 건강 점검 (고치지는 않는다 — 알리기만) — 상태/서비스.txt 에 적은 launchd 서비스가
+#   로드돼 있고 죽어 있지 않은가. 폴더 이름을 바꾸면 그 서비스 plist 의 경로가 깨져 죽어 있곤 한다.
+while IFS= read -r ws; do
+    [ -n "$ws" ] || continue; n="$(ws_name "$ws")"
+    for l in $(services_for "$n"); do
+        s="$(svc_status "$l")"
+        case "$s" in
+            ok\|*)      : ;;
+            missing\|*) warn "$n 서비스 로드 안 됨: $l (그 폴더의 설치 스크립트로 등록할 것)" ;;
+            *)          warn "$n 서비스 죽어 있음: $l (${s##*|} — plist 경로·설정 확인)" ;;
+        esac
+    done
+done <<<"$WS_LIST"
 
 # 편집기 설정 점검 (고치지는 않는다 — 설치 프로그램이 한 번 켠다)
 S="$HOME/Library/Application Support/Code/User/settings.json"
