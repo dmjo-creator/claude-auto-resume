@@ -35,6 +35,18 @@ if [ -f "$STATE/.전체끔" ] || [ -f "$STATE/$NAME.끔" ]; then
     jlog off "$NAME" "꺼 둠"; exit 0
 fi
 
+# 같은 폴더를 거의 동시에 두 번 띄우지 않게 잠근다 (folderOpen 과 Reload 가 겹칠 때, 11-12)
+#   exec 뒤에는 풀 수 없어서 시간으로 푼다 — LOCK_SEC 초가 지난 잠금은 낡은 것으로 보고 가져온다.
+LOCK="$STATE/$NAME.띄우는중"; LOCK_SEC=30
+if ! mkdir "$LOCK" 2>/dev/null; then
+    age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || echo 0) ))
+    if [ "$age" -lt "$LOCK_SEC" ]; then
+        echo "(다른 쪽이 ${age}초 전에 이 폴더의 claude 를 띄우기 시작했다 — 겹치지 않게 그만둔다)"
+        jlog skipped "$NAME" "띄우는 중(잠금 ${age}초)"; exit 0
+    fi
+    rmdir "$LOCK" 2>/dev/null; mkdir "$LOCK" 2>/dev/null || { jlog skipped "$NAME" "잠금 못 잡음"; exit 0; }
+fi
+
 claude_alive "$WS"; rc=$?
 if [ "$rc" = 0 ]; then
     echo "(claude 가 이미 떠 있다 — pid $CLAUDE_PID. 새로 띄우지 않는다)"

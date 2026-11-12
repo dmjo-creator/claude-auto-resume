@@ -259,6 +259,12 @@ OSA
     VSCODE_RELOAD_WHY="${r:-osascript 실패(접근성 권한?)}"; return 1
 }
 
+# 그 폴더의 resume_claude 가 이 시각 이후에 불렸나 (folderOpen 이 돌았나) — $1 이름, $2 YYYY-mm-ddTHH:MM:SS
+was_called() {
+    tail -n 400 "$STATE/재시작로그.jsonl" 2>/dev/null | grep -F "\"event\":\"called\",\"ws\":\"$1\"" \
+        | awk -F'"' -v t="$2" '$4 >= t {f=1} END {exit !f}'
+}
+
 online() { curl -s -m 5 -o /dev/null https://www.google.com/generate_204 || ping -c1 -W3 8.8.8.8 >/dev/null 2>&1; }
 wait_online() {
     local t=0; while [ "$t" -lt "${1:-300}" ]; do online && return 0; sleep 10; t=$((t+10)); done; return 1

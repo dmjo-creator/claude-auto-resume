@@ -74,28 +74,52 @@ alive_forget
 VSCODE="/Applications/Visual Studio Code.app"
 if [ -d "$VSCODE" ]; then
     step "편집기로 창 열기 (${#TARGETS[@]}곳)"
-    for ws in "${TARGETS[@]}"; do
-        n="$(ws_name "$ws")"
+    OPEN_AT=(); OPEN_TS=(); RELOADED=()
+    for i in "${!TARGETS[@]}"; do
+        ws="${TARGETS[$i]}"; n="$(ws_name "$ws")"
         printf '%s · %s' "$(now)" "$WHY" > "$STATE/$n.표식"
         echo "  편집기로 연다: $n"
+        OPEN_AT[$i]="$(date +%s)"; OPEN_TS[$i]="$(date '+%Y-%m-%dT%H:%M:%S')"; RELOADED[$i]=0
         open -a "$VSCODE" "$ws"
         sleep "$OPEN_STAGGER"
     done
-    step "자동 작업을 ${FOLDEROPEN_WAIT}초 기다린다"
-    for _ in $(seq 1 $((FOLDEROPEN_WAIT/2))); do
-        sleep 2; all=1
-        alive_snapshot; for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done; alive_forget
+    # ★ 창이 이미 열려 있던 폴더는 folderOpen 이 다시 돌지 않는다 → 45초를 다 기다려 봐야 헛일이었다 (11-12 시험).
+    #   folderOpen 이 돌면 몇 초 안에 기록에 called 가 남는다 (10-28 부팅 때 7초).
+    #   그래서 창을 연 뒤 CALLED_WAIT 초 안에 called 가 없으면 기다리지 않고 바로 Reload 한다.
+    step "folderOpen 작업을 최대 ${FOLDEROPEN_WAIT}초 기다린다 (${CALLED_WAIT:-15}초 안에 안 불리면 바로 Reload)"
+    T0="$(date +%s)"
+    while [ $(( $(date +%s) - T0 )) -lt "$FOLDEROPEN_WAIT" ]; do
+        sleep 2; all=1; todo=()
+        alive_snapshot
+        for i in "${!TARGETS[@]}"; do
+            claude_alive "${TARGETS[$i]}" && continue
+            all=0
+            [ "${VSCODE_AUTO_RELOAD:-0}" = 1 ] && [ "${RELOADED[$i]}" = 0 ] || continue
+            [ $(( $(date +%s) - OPEN_AT[i] )) -ge "${CALLED_WAIT:-15}" ] || continue
+            was_called "$(ws_name "${TARGETS[$i]}")" "${OPEN_TS[$i]}" || todo+=("$i")
+        done
+        alive_forget
         [ "$all" = 1 ] && break
-    done
-    # 아직 안 뜬 폴더 = 창이 이미 열려 있어 folderOpen 미발동 → Reload 로 재실행 (편집기자동리로드=1)
-    if [ "${VSCODE_AUTO_RELOAD:-0}" = 1 ]; then
-        for ws in "${TARGETS[@]}"; do
-            claude_alive "$ws" && continue
-            n="$(ws_name "$ws")"; echo "  $n: 창은 열려 있는데 claude 가 없다 — 편집기 창을 Reload 한다"
-            jlog reload "$n" "folderOpen 재실행 유도"
+        for i in ${todo[@]+"${todo[@]}"}; do
+            ws="${TARGETS[$i]}"; n="$(ws_name "$ws")"; RELOADED[$i]=1
+            echo "  $n: ${CALLED_WAIT:-15}초 안에 folderOpen 이 안 불렸다 (창이 이미 열려 있었다) — 바로 Reload 한다"
+            jlog reload "$n" "folderOpen 미발동 — 바로 Reload"
             vscode_reload "$ws" || { echo "  [!] $n: 키 입력을 멈췄다 (${VSCODE_RELOAD_WHY}) — 끝에 터미널로 띄운다"; jlog reloadskip "$n" "$VSCODE_RELOAD_WHY"; }
         done
-        for _ in $(seq 1 $((FOLDEROPEN_WAIT/3))); do
+    done
+    # 그래도 안 뜬 폴더 (folderOpen 은 불렸는데 claude 가 없다 등) — 아직 Reload 안 한 곳만 한 번 더
+    if [ "${VSCODE_AUTO_RELOAD:-0}" = 1 ]; then
+        again=0
+        alive_snapshot
+        for i in "${!TARGETS[@]}"; do
+            ws="${TARGETS[$i]}"; claude_alive "$ws" && continue
+            [ "${RELOADED[$i]}" = 0 ] || continue
+            n="$(ws_name "$ws")"; echo "  $n: 창은 열려 있는데 claude 가 없다 — 편집기 창을 Reload 한다"
+            jlog reload "$n" "folderOpen 재실행 유도"; RELOADED[$i]=1; again=1
+            vscode_reload "$ws" || { echo "  [!] $n: 키 입력을 멈췄다 (${VSCODE_RELOAD_WHY}) — 끝에 터미널로 띄운다"; jlog reloadskip "$n" "$VSCODE_RELOAD_WHY"; }
+        done
+        alive_forget
+        [ "$again" = 1 ] && for _ in $(seq 1 $((FOLDEROPEN_WAIT/3))); do
             sleep 2; all=1
             alive_snapshot; for ws in "${TARGETS[@]}"; do claude_alive "$ws" || all=0; done; alive_forget
             [ "$all" = 1 ] && break
